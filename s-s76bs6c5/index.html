@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>bspoke status</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #000;
+    cursor: none;
+  }
+  .slide {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    opacity: 0;
+    -webkit-transition: opacity 1.5s ease-in-out;
+    transition: opacity 1.5s ease-in-out;
+  }
+  .slide.synlig {
+    opacity: 1;
+  }
+  #oppdatert {
+    position: absolute;
+    right: 0.8vw;
+    bottom: 0.5vw;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 0.9vw;
+    color: #fff;
+    opacity: 0.35;
+  }
+</style>
+</head>
+<body>
+<img class="slide" id="a" alt="">
+<img class="slide" id="b" alt="">
+<div id="oppdatert"></div>
+<script>
+(function () {
+  'use strict';
+
+  var HENT_INTERVALL = 5 * 60 * 1000;   // slides.json hentes på nytt hvert 5. minutt
+  var RELOAD_ETTER = 60 * 60 * 1000;    // hele siden lastes på nytt én gang i timen
+  var NYTT_FORSOK = 30 * 1000;          // ventetid før nytt forsøk når nettet mangler
+
+  var params = lesParametere();
+  var visningstid = params.t * 1000;
+
+  var lag = [document.getElementById('a'), document.getElementById('b')];
+  var foran = 0;           // indeks i lag[] for bildet som vises nå
+  var slides = [];         // filnavn som skal vises (etter filter)
+  var versjon = '';        // "oppdatert" fra slides.json, brukes som cache-nøkkel for bildene
+  var neste = 0;           // indeks i slides[] for neste bilde
+  var timer = null;
+
+  function lesParametere() {
+    var res = { t: 45, s: null };
+    var q = window.location.search.replace(/^\?/, '').split('&');
+    for (var i = 0; i < q.length; i++) {
+      var del = q[i].split('=');
+      var navn = decodeURIComponent(del[0] || '');
+      var verdi = decodeURIComponent(del[1] || '');
+      if (navn === 't') {
+        var t = parseInt(verdi, 10);
+        if (t >= 5) res.t = t;
+      } else if (navn === 's' && verdi) {
+        res.s = verdi.split(',').map(function (x) { return x.replace(/\s/g, ''); })
+          .filter(function (x) { return x !== ''; });
+      }
+    }
+    return res;
+  }
+
+  function nummer(navn) {
+    var m = /^(\d+)-/.exec(navn);
+    return m ? parseInt(m[1], 10) : null;
+  }
+
+  function filtrer(liste) {
+    var ut = liste.filter(function (navn) {
+      if (!/\.png$/i.test(navn)) return false;
+      if (!params.s) return true;
+      var n = nummer(navn);
+      return n !== null && params.s.indexOf(String(n)) !== -1;
+    });
+    // Filnavnrekkefølge, med tallprefikset sortert som tall (2 før 10)
+    ut.sort(function (x, y) {
+      var nx = nummer(x), ny = nummer(y);
+      if (nx !== null && ny !== null && nx !== ny) return nx - ny;
+      return x < y ? -1 : (x > y ? 1 : 0);
+    });
+    return ut;
+  }
+
+  function hent(url, ok, feil) {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', url, true);
+    xhr.timeout = 20000;
+    xhr.onload = function () {
+      if (xhr.status >= 200 && xhr.status < 300) ok(xhr.responseText); else feil();
+    };
+    xhr.onerror = feil;
+    xhr.ontimeout = feil;
+    xhr.send();
+  }
+
+  function visTidspunkt(iso) {
+    // Leser lokal tid rett fra strengen, så TV-ens tidssone ikke spiller inn
+    var m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(iso || '');
+    document.getElementById('oppdatert').textContent =
+      m ? 'oppdatert ' + m[3] + '.' + m[2] + ' ' + m[4] + ':' + m[5] : '';
+  }
+
+  function bildeUrl(navn) {
+    return 'slides/' + encodeURIComponent(navn) + '?v=' + encodeURIComponent(versjon);
+  }
+
+  function visNeste() {
+    clearTimeout(timer);
+    timer = setTimeout(visNeste, visningstid);
+    if (slides.length === 0) return;
+
+    if (neste >= slides.length) neste = 0;
+    var url = bildeUrl(slides[neste]);
+    neste = (neste + 1) % slides.length;
+
+    var bak = lag[1 - foran];
+    if (lag[foran].getAttribute('src') === url) return;   // samme bilde, ingen overgang
+
+    var forhand = new Image();
+    forhand.onload = function () {
+      bak.onload = function () {
+        bak.onload = null;
+        bak.className = 'slide synlig';
+        lag[foran].className = 'slide';
+        foran = 1 - foran;
+      };
+      bak.setAttribute('src', url);
+    };
+    // Feiler bildet beholdes det som vises nå
+    forhand.onerror = function () {};
+    forhand.src = url;
+  }
+
+  function hentSlides() {
+    hent('slides.json?v=' + new Date().getTime(), function (tekst) {
+      var data;
+      try { data = JSON.parse(tekst); } catch (e) { return planlegg(NYTT_FORSOK); }
+      if (!data || !data.slides || !data.slides.length) return planlegg(NYTT_FORSOK);
+
+      var nye = filtrer(data.slides);
+      var nyVersjon = String(data.oppdatert || '');
+      var forsteGang = slides.length === 0;
+      var endret = nyVersjon !== versjon || nye.join('|') !== slides.join('|');
+
+      slides = nye;
+      versjon = nyVersjon;
+      visTidspunkt(versjon);
+      planlegg(HENT_INTERVALL);
+
+      // Første gang, eller når det bare er ett bilde: vis med en gang.
+      // Ellers kommer endringene inn ved neste bildeskifte.
+      if (forsteGang || (endret && slides.length === 1)) {
+        neste = 0;
+        visNeste();
+      }
+    }, function () {
+      planlegg(slides.length ? HENT_INTERVALL : NYTT_FORSOK);
+    });
+  }
+
+  var hentTimer = null;
+  function planlegg(ms) {
+    clearTimeout(hentTimer);
+    hentTimer = setTimeout(hentSlides, ms);
+  }
+
+  // Last siden på nytt bare hvis den faktisk kan nås, ellers fortsett med det vi har
+  function lastPaNytt() {
+    hent('index.html?v=' + new Date().getTime(), function () {
+      window.location.reload();
+    }, function () {
+      setTimeout(lastPaNytt, NYTT_FORSOK);
+    });
+  }
+
+  setTimeout(lastPaNytt, RELOAD_ETTER);
+  hentSlides();
+})();
+</script>
+</body>
+</html>
