@@ -59,5 +59,16 @@ foreach ($navn in $Skjermer.Keys) {
 </widget>
 "@
     [System.IO.File]::WriteAllText((Join-Path $mappe 'sssp_config.xml'), $sssp, $Utf8)
+
+    # Mappeadressen må svare 200: noen skjermer sjekker den før de henter sssp_config.xml.
+    # I en vanlig nettleser sender den videre til slidesiden.
+    $mal = $Base + $Skjermer[$navn]
+    $index = @"
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="robots" content="noindex,nofollow">
+<meta http-equiv="refresh" content="0; url=$mal"><title>bspoke kontorskjerm</title></head>
+<body style="background:#000"></body></html>
+"@
+    [System.IO.File]::WriteAllText((Join-Path $mappe 'index.html'), $index, $Utf8)
     '{0,-5} {1,6} byte  -> {2}{3}' -f $navn, $storrelse, $Base, $Skjermer[$navn]
 }
