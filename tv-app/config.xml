@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets" id="https://bspoke.no/kontorskjerm" version="__VERSJON__" viewmodes="maximized">
+    <tizen:application id="bspkKskrm1.kontorskjerm" package="bspkKskrm1" required_version="2.4"/>
+    <content src="index.html"/>
+    <name>bspoke kontorskjerm</name>
+    <access origin="*" subdomains="true"/>
+    <tizen:privilege name="http://tizen.org/privilege/internet"/>
+    <tizen:setting screen-orientation="landscape" context-menu="disable" background-support="disable" encryption="disable" install-location="auto"/>
+    <tizen:profile name="tv-samsung"/>
+</widget>

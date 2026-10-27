@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>bspoke kontorskjerm</title>
+<style>
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; cursor: none; }
+  iframe { display: block; border: 0; width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+<iframe id="side"></iframe>
+<script>
+(function () {
+  'use strict';
+
+  // Fylles inn av lag-tv-app.ps1
+  var SIDE = '__URL__';
+  var SJEKK = '__JSON__';
+
+  // Ved oppstart er nettet ofte ikke klart ennå. Vent til slides.json svarer før siden åpnes,
+  // så skjermen ikke blir stående med en feilside. Etter det tar slidesiden seg av resten.
+  function start() {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', SJEKK + '?v=' + new Date().getTime(), true);
+    xhr.timeout = 15000;
+    xhr.onload = function () {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        document.getElementById('side').src = SIDE;
+      } else {
+        setTimeout(start, 30000);
+      }
+    };
+    xhr.onerror = function () { setTimeout(start, 30000); };
+    xhr.ontimeout = function () { setTimeout(start, 30000); };
+    xhr.send();
+  }
+
+  start();
+})();
+</script>
+</body>
+</html>
