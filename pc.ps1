@@ -7,7 +7,8 @@
 #  - lager standardbrukeren «Kontorskjerm» med et tilfeldig passord ingen trenger å kunne
 #  - logger den inn automatisk ved oppstart
 #  - starter Edge i fullskjerm-kiosk med slidesiden når nettet er oppe, og på nytt hvis Edge lukkes
-#  - slår av hvilemodus og skjermsparing på strøm, og lar PC-en stå med lokket lukket
+#  - slår av hvilemodus og skjermsparing (også på batteri), og lar PC-en stå med lokket lukket
+#  - krever ikke pålogging når PC-en våkner fra hvile
 #
 # Angre: slett brukeren Kontorskjerm og oppgaven «Kontorskjerm» i Oppgaveplanleggeren,
 # og sett AutoAdminLogon til 0 under HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon.
@@ -97,11 +98,15 @@ while (`$true) {
     $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew
     Register-ScheduledTask -TaskName 'Kontorskjerm' -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
 
-    # 5. Strøm: aldri hvile eller slukke skjermen på strøm, ingenting skjer når lokket lukkes
-    powercfg /change standby-timeout-ac 0
-    powercfg /change monitor-timeout-ac 0
-    powercfg /change hibernate-timeout-ac 0
-    powercfg /setacvalueindex SCHEME_CURRENT SUB_BUTTONS LIDACTION 0
+    # 5. Strøm: aldri hvile eller slukke skjermen, heller ikke på batteri hvis strømmen går,
+    #    ingenting skjer når lokket lukkes, og ingen pålogging hvis den likevel våkner fra hvile
+    foreach ($m in 'ac', 'dc') {
+        powercfg /change "standby-timeout-$m" 0
+        powercfg /change "monitor-timeout-$m" 0
+        powercfg /change "hibernate-timeout-$m" 0
+        powercfg "/set$($m)valueindex" SCHEME_CURRENT SUB_BUTTONS LIDACTION 0
+        powercfg "/set$($m)valueindex" SCHEME_CURRENT SUB_NONE CONSOLELOCK 0
+    }
     powercfg /setactive SCHEME_CURRENT
 
     # 6. Windows Update starter ikke PC-en på nytt mellom 06 og 23
